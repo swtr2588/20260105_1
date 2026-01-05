@@ -1,59 +1,152 @@
-<div>Teachable Machine Image Model</div>
-<button type="button" onclick="init()">Start</button>
-<div id="webcam-container"></div>
-<div id="label-container"></div>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-<script type="text/javascript">
-    // More API functions here:
-    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>자세 인식 웹앱</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    // the link to your model provided by Teachable Machine export panel
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #f2f4f8;
+      font-family: 'Segoe UI', Pretendard, sans-serif;
+      transition: background-color 0.5s ease;
+    }
+
+    .app {
+      background: white;
+      width: 360px;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.4rem;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    button {
+      margin: 12px 0;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      color: white;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #webcam-container canvas {
+      width: 100%;
+      border-radius: 12px;
+      margin-top: 12px;
+    }
+
+    #label-container div {
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 10px;
+      background: #f4f6fb;
+      font-size: 0.9rem;
+    }
+
+    .status {
+      margin-top: 14px;
+      font-size: 1.1rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>AI 자세 인식</h1>
+    <button onclick="init()">Start</button>
+
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+    <div class="status" id="status-text">상태 대기 중...</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+  <script>
     const URL = "./my_model/";
 
     let model, webcam, labelContainer, maxPredictions;
 
-    // Load the image model and setup the webcam
     async function init() {
-        const modelURL = URL + "model.json";
-        const metadataURL = URL + "metadata.json";
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
 
-        // load the model and metadata
-        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
-        // or files from your local hard drive
-        // Note: the pose library adds "tmImage" object to your window (window.tmImage)
-        model = await tmImage.load(modelURL, metadataURL);
-        maxPredictions = model.getTotalClasses();
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
 
-        // Convenience function to setup a webcam
-        const flip = true; // whether to flip the webcam
-        webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
-        await webcam.setup(); // request access to the webcam
-        await webcam.play();
-        window.requestAnimationFrame(loop);
+      webcam = new tmImage.Webcam(240, 240, true);
+      await webcam.setup();
+      await webcam.play();
+      window.requestAnimationFrame(loop);
 
-        // append elements to the DOM
-        document.getElementById("webcam-container").appendChild(webcam.canvas);
-        labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < maxPredictions; i++) { // and class labels
-            labelContainer.appendChild(document.createElement("div"));
-        }
+      document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+      labelContainer = document.getElementById("label-container");
+      labelContainer.innerHTML = "";
+      for (let i = 0; i < maxPredictions; i++) {
+        labelContainer.appendChild(document.createElement("div"));
+      }
     }
 
     async function loop() {
-        webcam.update(); // update the webcam frame
-        await predict();
-        window.requestAnimationFrame(loop);
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
     }
 
-    // run the webcam image through the image model
     async function predict() {
-        // predict can take in an image, video or canvas html element
-        const prediction = await model.predict(webcam.canvas);
-        for (let i = 0; i < maxPredictions; i++) {
-            const classPrediction =
-                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-            labelContainer.childNodes[i].innerHTML = classPrediction;
-        }
+      const prediction = await model.predict(webcam.canvas);
+
+      let goodProb = 0;
+      let badProb = 0;
+
+      for (let i = 0; i < maxPredictions; i++) {
+        const p = prediction[i];
+        labelContainer.childNodes[i].innerHTML =
+          `${p.className} : ${(p.probability * 100).toFixed(1)}%`;
+
+        // 👉 클래스 이름 맞게 수정 가능
+        if (p.className === "Good") goodProb = p.probability;
+        if (p.className === "Bad") badProb = p.probability;
+      }
+
+      const statusText = document.getElementById("status-text");
+
+      if (goodProb >= 0.5) {
+        document.body.style.backgroundColor = "#4CAF50";
+        statusText.innerText = "✅ 바른 자세입니다!";
+      } 
+      else if (badProb >= 0.5) {
+        document.body.style.backgroundColor = "#F44336";
+        statusText.innerText = "⚠️ 자세가 좋지 않아요";
+      } 
+      else {
+        document.body.style.backgroundColor = "#f2f4f8";
+        statusText.innerText = "자세 인식 중...";
+      }
     }
-</script>
+  </script>
+</body>
+</html>
